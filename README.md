@@ -46,6 +46,7 @@ The system operates through the following stages:
 - **Explainable Recommendations** — Surfaces the key signals behind each detected condition so that financial teams can understand why an alert was generated.
 - **Personalised Intervention** — Applies generative AI to produce context-specific customer communication in place of uniform generic messaging.
 - **Human-in-the-Loop Review** — Retains material financial decisions under authorised human review rather than permitting automated high-impact action.
+- **Auditable Decision Trail** — Commits a hash of each material decision to the Drunix ledger, making the lifecycle from detection through approval and intervention independently verifiable without placing customer data on-chain.
 - **Outcome Tracking** — Monitors the customer's position following intervention and feeds the observed outcome back into detection and recommendation.
 
 **Illustrative case:** a customer may continue to meet all payments on schedule. If, concurrently, income is declining, savings are depleting, credit utilisation is rising and recurring payments are progressively delayed, VISTA identifies these movements as a coherent pattern of building financial pressure.
@@ -115,11 +116,51 @@ Recommendations involving material financial action are reviewed by an authorise
 
 This human-in-the-loop model ensures automated predictions support financial professionals rather than replacing human judgement in sensitive circumstances.
 
-### Layer 10 — Blockchain Audit
+### Layer 10 — Blockchain Audit and Trust
 
-The Drunix blockchain infrastructure maintains an auditable record of material intervention events. Rather than storing sensitive customer information on-chain, the system records hashed or reference-based information representing the history of significant decisions.
+The Drunix blockchain infrastructure maintains a tamper-evident record of material intervention events. Rather than storing sensitive customer information on-chain, the system records hashed or reference-based information representing the history of significant decisions.
 
-The audit layer records the detected condition, contributing factors, recommendation, approval, intervention and outcome, providing a tamper-evident record of the decision process and improving transparency and accountability.
+**Scope.** This layer is deliberately narrow. Blockchain does not contribute to risk prediction, velocity computation, stress classification, trajectory forecasting, SHAP attribution or recommendation generation — those are the responsibility of the analytical and machine-learning layers. The audit layer holds a single responsibility:
+
+> Provide a tamper-evident, independently verifiable audit trail for high-impact financial decisions and interventions.
+
+Its remit is therefore limited to **audit, integrity, traceability and accountability**, and excludes prediction, recommendation, risk computation, customer data storage and model processing.
+
+#### Functions
+
+**1. Tamper-evident audit trail.** Each material decision produces a canonical audit record held off-chain. A cryptographic hash of that record is committed to Drunix, establishing verifiable proof that the decision record existed in that exact form at that point in time.
+
+**2. Decision accountability.** The full decision lifecycle is recorded as a sequence of events — risk detected, recommendation generated, human approval granted, intervention executed, outcome observed. This allows an authorised party to later establish which recommendation was generated, whether it was approved, whether a human modified it, when the intervention occurred, and what resulted.
+
+**3. Detection of silent modification.** An operational database can be altered by an authorised administrator without trace. Committing the hash of each audit record to the ledger means that any subsequent change to the off-chain record produces a differing hash and is therefore detectable. The blockchain does not render the off-chain store immutable; it renders unauthorised modification evident.
+
+**4. Multi-party trust.** Risk, support and compliance functions within an institution require confidence in the same intervention history. An independently verifiable ledger removes the need for each party to rely on the integrity of a single operational database.
+
+#### On-chain and off-chain boundary
+
+The separation between stored data and committed proof is strict.
+
+```
+                     OFF-CHAIN                          ON-CHAIN
+        ┌──────────────────────────────┐        ┌────────────────────┐
+        │   PostgreSQL / MongoDB       │        │       DRUNIX       │
+        │                              │        │                    │
+        │   Customer records           │        │   Record hash      │
+        │   Transaction history        │ ─hash─▶│   Event identifier │
+        │   Derived features           │        │   Timestamp        │
+        │   Model outputs              │        │   Lifecycle status │
+        │   Recommendations            │        │                    │
+        │   Customer communication     │        │                    │
+        └──────────────────────────────┘        └────────────────────┘
+```
+
+Customer names, account numbers, balances, transaction history, salary details, credit information, personal identifiers, raw model features, generative-AI prompts and customer communication are never written to the ledger. Only the hash, an event identifier, a timestamp and the lifecycle status are committed.
+
+#### Design rationale
+
+The operational data store remains the system of record; the ledger is the system of proof. PostgreSQL holds the working data that the application reads and writes, while Drunix provides an auditable trail across the critical decision lifecycle — from risk detection and recommendation, through human approval and intervention, to observed outcome. Because sensitive data remains off-chain and only hashes and references are committed, the institution retains data confidentiality while gaining the ability to independently verify that the recorded decision history has not been altered.
+
+This confines the blockchain to the function it genuinely serves and keeps the system's analytical capability — behavioural and transactional risk, unified scoring, velocity and acceleration, stress trajectory, explainable recommendation and human decision — where it belongs.
 
 ### Layer 11 — Outcome Tracking and Feedback
 
@@ -129,11 +170,26 @@ Observed outcomes are returned to the system to evaluate the effectiveness of di
 
 ### System Architecture
 
+The analytical pipeline runs end to end, with the blockchain layer operating alongside it rather than within it.
+
 ```
 Financial Data Ingestion → Data Processing → Personal Baseline → Financial Signals
 → Pressure Analysis → Velocity and Acceleration → Stress Classification
 → Financial Forecasting → Explainable Recommendation → Human Review
 → Intervention → Outcome Tracking → Continuous Improvement
+
+                  │
+                  │  decision lifecycle events (hashed)
+                  ▼
+        ┌────────────────────────────────┐
+        │   DRUNIX AUDIT AND TRUST LAYER │
+        │                                │
+        │   Risk detection               │
+        │   Recommendation generated     │
+        │   Human approval               │
+        │   Intervention executed        │
+        │   Outcome recorded             │
+        └────────────────────────────────┘
 ```
 
 ---
@@ -153,7 +209,7 @@ Financial Data Ingestion → Data Processing → Personal Baseline → Financial
 | Explainable AI | SHAP for attribution of model outputs to contributing signals |
 | Generative AI | LLM-based personalised communication and intervention recommendation |
 | ML Services | Python, FastAPI, Uvicorn, Pydantic |
-| Blockchain | Drunix for auditable intervention and decision records |
+| Blockchain | Drunix for tamper-evident audit of the decision lifecycle; hashes and references only, no customer data on-chain |
 | Security | TLS 1.3, AES-256, JWT / OAuth 2.0, RBAC, hashed customer identifiers |
 | Deployment | Docker, Docker Compose, Nginx, Ubuntu / Linux |
 | DevOps | GitHub, GitHub Actions, Prometheus, Grafana |
